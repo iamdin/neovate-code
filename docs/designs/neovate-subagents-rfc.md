@@ -1,9 +1,8 @@
-# RFC: NeovateCode Subagents System
+# RFC: Subagents System
 
 **Status:** Draft
-**Author:** [Your Name]
-**Created:** 2025-11-17
-**Last Updated:** 2025-11-17
+**Created:** 2025-11-21
+**Last Updated:** 2025-11-21
 
 ## Abstract
 
@@ -135,13 +134,26 @@ Option 2: **Granular Control**
 - `inherit` - Matches main conversation model
 - Omit field - Uses default subagent model configuration
 
-**6. Invocation Methods**
+**6. Agent Nesting Prevention**
 
-**Three Invocation Methods:**
+- **Critical safety mechanism** - Subagents cannot spawn other subagents
+- Prevents infinite recursion and uncontrolled resource usage
+- **Exception**: Special Plan agent for plan mode
+- **Essential for**: System stability, cost control, predictable execution
+- **Implementation**: Disable Task, TodoWrite, and TodoRead tools in subagent contexts
+- **Security benefit**: Limits attack surface for prompt injection exploits
+
+**7. Invocation Methods**
+
+**Four Invocation Methods:**
 
 1. **Automatic** - Claude matches tasks to agents based on descriptions
 2. **Explicit** - User mentions agent by name ("use the code-reviewer subagent")
-3. **CLI** - Dynamic definition via `--agents` flag for testing/automation
+3. **@ Mention** - User types `@agent-name` in chat to invoke specific agent
+   - Provides autocomplete/selection UI
+   - Clear visual indicator of agent invocation
+   - Familiar UX pattern from chat applications
+4. **CLI** - Dynamic definition via `--agents` flag for testing/automation
 
 #### Advanced Features
 
@@ -155,18 +167,12 @@ Option 2: **Granular Control**
 - **Context restoration**: Full context from previous conversation is restored when resuming
 - **Use case**: Long-running research, iterative refinement, particularly useful for analysis tasks that span multiple sessions
 
-**2. Agent Nesting Prevention**
-
-- Subagents cannot spawn other subagents
-- Prevents infinite recursion
-- **Exception**: Special Plan agent for plan mode
-
-**3. Subagent Chaining**
+**2. Subagent Chaining**
 
 - Sequence multiple subagents for complex workflows
 - Results inform subsequent agent invocations
 
-**4. Dynamic Selection**
+**3. Dynamic Selection**
 
 - AI matches tasks to agents based on description similarity and context
 - Documentation: _"Claude intelligently matches tasks to subagents based on context and description specificity"_
@@ -180,6 +186,13 @@ Option 2: **Granular Control**
 - Edit existing agents (tools, prompts, configuration)
 - Delete custom agents (built-in protected)
 - Press 'e' to edit in external editor ($EDITOR)
+
+**@ Mention in Chat** - Quick agent invocation surface:
+
+- Type `@` to trigger agent autocomplete dropdown
+- Shows available agents with descriptions
+- Select agent to invoke with current context
+- Visual badge/indicator shows which agent is handling the task
 
 **Alternative:** Direct file editing in `.claude/agents/*.md` or `~/.claude/agents/*.md`
 
@@ -315,7 +328,10 @@ This follows the proven pattern established by Claude Code's subagent architectu
 - ✅ Build agent executor with isolated context windows
 - ✅ Implement message history management for isolated conversations
 - ✅ Create tool resolver and permission system
-- ✅ Build nesting prevention mechanism
+- ✅ Build nesting prevention mechanism (core security feature)
+  - Filter out Task, TodoWrite, and TodoRead tools in subagent contexts
+  - Prevent subagents from spawning other subagents
+  - Prevent subagents from managing main conversation todos
 - ✅ Ship two built-in agents: `general-proposal` and `explore`
 
 #### Phase 1: Custom Subagent Support
@@ -332,20 +348,14 @@ This follows the proven pattern established by Claude Code's subagent architectu
 - ✅ Build agent CRUD operations (Create, Read, Update, Delete)
 - ✅ Add AI-assisted agent generation
 - ✅ Implement auto-delegation with task matching
-- ✅ Add external editor integration ($EDITOR)
+- ✅ Implement @ mention surface for agent selection in chat
 
-### Non-Goals
+### Non-Goals (Future Features)
 
-#### Out of Scope for Initial Release
-
-- ❌ Resumable agents with transcript storage
-- ❌ CLI `--agents` flag for dynamic configuration
-- ❌ Plugin-provided agents
-- ❌ Agent chaining for complex workflows
-- ❌ Cloud marketplace or agent sharing platform
-- ❌ Visual agent builder
-- ❌ Agent analytics and effectiveness metrics
-- ❌ Persistent agent memory across invocations
+- ⏳ Resumable agent execution - Transcript storage and resume capabilities
+- ⏳ Agent chaining - Sequential composition of multiple agents
+- ⏳ Persistent agent state - Agents maintaining state across invocations
+- ⏳ Config file watching - Watch project-level config files for automatic reload on changes
 
 ---
 
@@ -353,225 +363,586 @@ This follows the proven pattern established by Claude Code's subagent architectu
 
 ### Architecture Overview
 
+The NeovateCode subagent system follows a hierarchical architecture with clear separation between configuration loading, task delegation, and execution. The system ensures isolated execution contexts while maintaining centralized control over agent lifecycle and security.
+
+#### High-Level System Architecture
+
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     Main Conversation                        │
-│  ┌────────────────────────────────────────────────────────┐ │
-│  │  Agent Dispatcher                                      │ │
-│  │  - Task matching                                       │ │
-│  │  - Agent selection                                     │ │
-│  │  - Priority resolution                                 │ │
-│  └────────────────────────────────────────────────────────┘ │
-└──────────────────────┬──────────────────────────────────────┘
-                       │
-        ┌──────────────┼──────────────┐
-        │              │              │
-┌───────▼──────┐ ┌────▼─────┐ ┌──────▼───────┐
-│  Subagent A  │ │ Subagent B│ │  Subagent C  │
-│              │ │           │ │              │
-│ Context A    │ │ Context B │ │  Context C   │
-│ Tools A      │ │ Tools B   │ │  Tools C     │
-│ Model A      │ │ Model B   │ │  Model C     │
-└──────────────┘ └───────────┘ └──────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           NeovateCode CLI                                    │
+│                                                                              │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │                        Main Conversation Thread                        │  │
+│  │                                                                        │  │
+│  │  ┌──────────────────┐         ┌─────────────────────────────────┐    │  │
+│  │  │  User Request    │────────▶│   Main AI Agent (LLM)           │    │  │
+│  │  └──────────────────┘         │  - Process user request         │    │  │
+│  │                               │  - Decide task delegation       │    │  │
+│  │                               │  - Call Task tool when needed   │    │  │
+│  │                               │  - Access to all tools          │    │  │
+│  │                               └────────────┬────────────────────┘    │  │
+│  │                                            │                          │  │
+│  │                                            │ Task Tool Call           │  │
+│  │                                            │ {subagent_type,          │  │
+│  │                                            │  prompt, model}          │  │
+│  │                                            ▼                          │  │
+│  │  ┌─────────────────────────────────────────────────────────────┐     │  │
+│  │  │              Task Tool (Agent Executor)                      │     │  │
+│  │  │                                                              │     │  │
+│  │  │  1. Lookup subagent config by subagent_type                 │     │  │
+│  │  │  2. Check execution stack (nesting prevention)              │     │  │
+│  │  │  3. Filter tools based on agent config                      │     │  │
+│  │  │  4. Select model (config/inherit/default)                   │     │  │
+│  │  │  5. Create isolated LLM context                             │     │  │
+│  │  │  6. Execute subagent task                                   │     │  │
+│  │  │  7. Store transcript (optional)                             │     │  │
+│  │  │  8. Return result to main agent                             │     │  │
+│  │  └─────────────────────────────────────────┬───────────────────┘     │  │
+│  └────────────────────────────────────────────┼─────────────────────────┘  │
+└─────────────────────────────────────────────┬─┼─────────────────────────────┘
+                                              │ │
+                     ┌────────────────────────┘ └────────────────────┐
+                     │                                                │
+         ┌───────────▼───────────┐                      ┌────────────▼────────────┐
+         │   Subagent Context A  │                      │   Subagent Context B    │
+         │  (e.g., "explore")    │                      │  (e.g., "general")      │
+         │  ┌─────────────────┐  │                      │  ┌─────────────────┐   │
+         │  │ LLM Thread      │  │                      │  │ LLM Thread      │   │
+         │  │ - Fresh context │  │                      │  │ - Fresh context │   │
+         │  │ - No history    │  │                      │  │ - No history    │   │
+         │  │ - Only prompt   │  │                      │  │ - Only prompt   │   │
+         │  └─────────────────┘  │                      │  └─────────────────┘   │
+         │  ┌─────────────────┐  │                      │  ┌─────────────────┐   │
+         │  │ Tool Subset     │  │                      │  │ Tool Subset     │   │
+         │  │ (configured)    │  │                      │  │ (all tools)     │   │
+         │  │ ❌ No Task     │  │                      │  │ ❌ No Task     │   │
+         │  │ ❌ No TodoWrite│  │                      │  │ ❌ No TodoWrite│   │
+         │  │ ❌ No TodoRead │  │                      │  │ ❌ No TodoRead │   │
+         │  └─────────────────┘  │                      │  └─────────────────┘   │
+         │  ┌─────────────────┐  │                      │  ┌─────────────────┐   │
+         │  │ System Prompt   │  │                      │  │ System Prompt   │   │
+         │  │ (from config)   │  │                      │  │ (from config)   │   │
+         │  └─────────────────┘  │                      │  └─────────────────┘   │
+         └───────────┬───────────┘                      └────────────┬───────────┘
+                     │                                                │
+                     │ Nesting prevention: Task, TodoWrite & TodoRead│ Nesting prevention: Task, TodoWrite & TodoRead
+                     │ automatically filtered out                     │ automatically filtered out
+                     │                                                │
+                     ▼                                                ▼
+              Result returned                                  Result returned
+              to main agent                                    to main agent
+```
+
+#### Configuration Loading Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        Configuration Sources (Priority Order)                │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+   1️⃣ PROJECT LEVEL (Highest Priority)
+   ┌──────────────────────────────────────────────────────────────────────┐
+   │  Merge within project level:                                         │
+   │                                                                       │
+   │  Step 1: Load .neovate/agents/*.md                                   │
+   │  ┌──────────────────────────┐                                        │
+   │  │ .neovate/agents/         │                                        │
+   │  │ ├─ code-reviewer.md      │  Loaded first                         │
+   │  │ ├─ debugger.md           │                                        │
+   │  │ └─ data-scientist.md     │                                        │
+   │  └──────────────────────────┘                                        │
+   │                                                                       │
+   │  Step 2: Load .neovate/config.json (agents field)                    │
+   │  ┌──────────────────────────┐                                        │
+   │  │ .neovate/config.json     │                                        │
+   │  │ {                        │  Merges and OVERRIDES                 │
+   │  │   "agents": {            │  any matching names                   │
+   │  │     "debugger": {...}    │  from Step 1                          │
+   │  │   }                      │                                        │
+   │  │ }                        │                                        │
+   │  └──────────────────────────┘                                        │
+   │                                                                       │
+   │  Result: Merged project-level agents                                 │
+   └──────────────────────────────────────────────────────────────────────┘
+
+   2️⃣ USER LEVEL (Lower Priority - fallback for missing agents)
+   ┌──────────────────────────────────────────────────────────────────────┐
+   │  Merge within user level:                                            │
+   │                                                                       │
+   │  Step 1: Load ~/.neovate/agents/*.md                                 │
+   │  ┌──────────────────────────┐                                        │
+   │  │ ~/.neovate/agents/       │                                        │
+   │  │ ├─ personal.md           │  Loaded first                         │
+   │  │ └─ my-helper.md          │                                        │
+   │  └──────────────────────────┘                                        │
+   │                                                                       │
+   │  Step 2: Load ~/.neovate/config.json (agents field)                  │
+   │  ┌──────────────────────────┐                                        │
+   │  │ ~/.neovate/config.json   │                                        │
+   │  │ {                        │  Merges and OVERRIDES                 │
+   │  │   "agents": {            │  any matching names                   │
+   │  │     "personal": {...}    │  from Step 1                          │
+   │  │   }                      │                                        │
+   │  │ }                        │                                        │
+   │  └──────────────────────────┘                                        │
+   │                                                                       │
+   │  Result: Merged user-level agents                                    │
+   └──────────────────────────────────────────────────────────────────────┘
+
+                     │
+                     ▼
+        ┌────────────────────────────────────────────────────────┐
+        │  Configuration Loader                                   │
+        │                                                         │
+        │  1. Load user-level agents (files + config.json)        │
+        │     - Merge: config.json overrides file-based           │
+        │                                                         │
+        │  2. Load project-level agents (files + config.json)     │
+        │     - Merge: config.json overrides file-based           │
+        │                                                         │
+        │  3. Final merge: project overrides user                 │
+        │     - Only for agents with same name                    │
+        │     - User agents without conflicts remain              │
+        │                                                         │
+        │  4. Validate all configs                                │
+        │  5. Cache parsed configs                                │
+        └────────────┬───────────────────────────────────────────┘
+                     │
+                     ▼
+        ┌────────────────────────────┐
+        │     Agent Registry          │
+        │  Map<name, AgentConfig>     │
+        │  - Merged from both levels  │
+        │  - Project overrides user   │
+        │  - Config overrides files   │
+        └─────────────────────────────┘
+```
+
+#### Agent Invocation Flow
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          Agent Invocation Process                            │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+    User Request
+         │
+         ▼
+   ┌──────────────────────────────────────────────────────────┐
+   │           Main AI Agent (LLM)                            │
+   │           Makes delegation decision internally           │
+   │                                                           │
+   │           If delegates → Calls Task tool with:           │
+   │             - subagent_type: "explore"                   │
+   │             - prompt: "Search for authentication code"   │
+   │             - model: "haiku" (optional)                  │
+   └───────────────────────┬──────────────────────────────────┘
+                           │
+                           │ Task tool invoked
+                           ▼
+   ┌──────────────────────────────────────────────────────────┐
+   │              Task Tool Execution Pipeline                 │
+   │                                                           │
+   │  1. Lookup agent config by subagent_type                 │
+   │     └─ Load from registry (built-in or custom)           │
+   │                                                           │
+   │  2. Resolve tool permissions                              │
+   │     ├─ If tools specified in config → Filter to subset   │
+   │     ├─ If not specified → Inherit all from main          │
+   │     └─ Always filter out: Task, TodoWrite (nesting)      │
+   │                                                           │
+   │  3. Select model                                          │
+   │     ├─ Tool call param "model" (highest priority)        │
+   │     ├─ Agent config model (sonnet/opus/haiku)            │
+   │     ├─ "inherit" → Use main conversation model           │
+   │     └─ Unspecified → Use default subagent model          │
+   │                                                           │
+   │  4. Create isolated LLM context                           │
+   │     ├─ Fresh conversation thread                         │
+   │     ├─ System prompt from agent config                   │
+   │     ├─ User message = prompt parameter                   │
+   │     └─ No access to main conversation history            │
+   │                                                           │
+   │  5. Execute subagent                                      │
+   │     └─ Tool calls filtered through permission system     │
+   │                                                           │
+   │  6. Store transcript (optional)                           │
+   │     └─ agent-{agentId}.jsonl                             │
+   │                                                           │
+   │  7. Return result to main agent                           │
+   └───────────────────────────────────────────────────────────┘
+```
+
+#### Nesting Prevention Mechanism
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    Tool Filtering (Nesting Prevention)                       │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+Main Conversation:                     Subagent Context:
+┌──────────────────┐                   ┌──────────────────────────────┐
+│ Available Tools: │                   │ Available Tools (filtered):  │
+│ - Read           │                   │ - Read                       │
+│ - Write          │                   │ - Write                      │
+│ - Grep           │                   │ - Grep                       │
+│ - Glob           │                   │ - Glob                       │
+│ - Bash           │                   │ - Bash                       │
+│ - Task ✅        │                   │ - Task ❌ (filtered out)     │
+│ - TodoWrite ✅   │                   │ - TodoWrite ❌ (filtered out)│
+│ - TodoRead ✅    │                   │ - TodoRead ❌ (filtered out) │
+│ - ...            │                   │ - ...                        │
+└──────────────────┘                   └──────────────────────────────┘
+        │                                      │
+        │ Can invoke subagents                 │ Cannot invoke subagents
+        │ via Task tool                        │ Task tool not available
+        ▼                                      ▼
+┌──────────────────┐                   ┌──────────────────────────────┐
+│ Task(            │                   │ If LLM tries to call Task:   │
+│   type:"explore",│                   │ ❌ Tool not found error      │
+│   prompt:"..."   │                   │                              │
+│ ) ✅ Success     │                   │ LLM must work with available │
+└──────────────────┘                   │ tools only (no delegation)   │
+                                       └──────────────────────────────┘
+
+Implementation:
+  1. When creating subagent context, filter out Task and TodoWrite tools
+  2. LLM system prompt indicates these tools are unavailable
+  3. No additional runtime checking needed - tools simply don't exist
+  4. Simple and foolproof: can't call what doesn't exist
+```
+
+#### Data Flow Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              Data Flow                                       │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+User Input ──────┐
+                 │
+Configuration ───┼──▶ ┌──────────────────┐
+Files            │    │  Agent Registry   │
+                 │    │  (in-memory)      │
+                 │    │  - Built-in       │
+                 │    │  - Custom         │
+                 │    └─────────┬─────────┘
+                 │              │
+                 ▼              │ Available to
+            ┌─────────────────────────┐
+            │   Main AI Agent (LLM)   │
+            │   - Process request     │
+            │   - Decide delegation   │◀─── Conversation
+            │   - Access registry     │     History
+            └────────┬────────────────┘
+                     │
+                     │ If delegate → Task tool call
+                     │ {subagent_type, prompt, model}
+                     ▼
+            ┌─────────────────────────┐
+            │  Task Tool              │
+            │  (Agent Executor)       │
+            │  Inputs:                │
+            │  - subagent_type        │
+            │  - prompt               │
+            │  - model (optional)     │
+            │  - Agent registry       │
+            │  - Execution stack      │
+            └────────┬────────────────┘
+                     │
+                     │ Lookup config
+                     ▼
+            ┌─────────────────────────┐
+            │  Agent Config           │
+            │  {name, tools, model,   │
+            │   systemPrompt}         │
+            └────────┬────────────────┘
+                     │
+         ┌───────────┴────────────┐
+         │                        │
+         ▼                        ▼
+┌──────────────────┐    ┌──────────────────┐
+│ LLM API          │    │ Transcript Store │
+│ (Subagent)       │    │ agent-{id}.jsonl │
+│ - Model request  │    │ (optional)       │
+│ - System prompt  │    │                  │
+│ - User prompt    │    │                  │
+│ - Streaming resp │    │                  │
+└────────┬─────────┘    └──────────────────┘
+         │
+         │ Tool calls (filtered)
+         ▼
+┌──────────────────┐
+│ Tool Executor    │
+│ (permission      │
+│  filtered)       │
+│ - Read, Write    │
+│ - Grep, Glob     │
+│ - Bash, etc.     │
+└────────┬─────────┘
+         │ Tool results
+         ▼
+    Subagent output
+         │
+         ▼
+┌──────────────────┐
+│ Task Tool Result │
+│ (returned to     │
+│  main agent)     │
+└────────┬─────────┘
+         │
+         ▼
+┌──────────────────┐
+│ Main AI Agent    │
+│ (continues)      │
+└──────────────────┘
 ```
 
 ### Core Components
 
-#### 1. Agent Configuration System
+#### 1. Task Tool Implementation
 
-**Configuration Loader**
+**System Prompt Integration**
 
-- Scans directories: CLI args, `.neovate/agents/`, `~/.neovate/agents/`, plugins
-- Parses YAML frontmatter + Markdown body
-- Validates required fields (name, description)
-- Merges configurations with priority ordering
-- Caches parsed configurations for performance
+- Main agent's system prompt lists available subagents with descriptions
+- Includes delegation guidelines (when to use Task tool)
 
-**Configuration Schema**
+**Task Tool Parameters**
 
-```typescript
-interface AgentConfig {
-  name: string; // Required: unique identifier
-  description: string; // Required: invocation trigger description
-  tools?: string[]; // Optional: specific tools or inherit all
-  model?: "sonnet" | "opus" | "haiku" | "inherit"; // Optional: model selection
-  systemPrompt: string; // Markdown body content
-}
-```
+- **subagent_type**: Name of subagent to invoke (required)
+- **prompt**: Task description for subagent (required)
+- **description**: Short description for UI (optional)
+- **model**: "sonnet" | "opus" | "haiku" - override model (optional)
 
-**Priority Resolution**
+**Execution Flow**
 
-```typescript
-enum ConfigSource {
-  PROJECT = 4, // Highest priority
-  CLI = 3,
-  USER = 2,
-  PLUGIN = 1, // Lowest priority
-}
+1. Lookup agent config from registry
+2. Validate agent exists
+3. Resolve model (param > config > inherit > default)
+4. Execute via AgentExecutor with filtered tools
+5. Return string result
 
-function resolveAgent(name: string): AgentConfig {
-  const candidates = findAllAgents(name);
-  return candidates.sort((a, b) => b.priority - a.priority)[0];
-}
-```
+**Return Result**
 
-#### 2. Agent Dispatcher
+- String: subagent's final response or formatted error message
 
-**Task Matching Algorithm**
+**Delegation Logic**
+Main agent delegates when:
 
-```typescript
-interface TaskMatch {
-  agent: AgentConfig;
-  score: number;
-  reason: string;
-}
+- Complex multi-step tasks needing isolated context
+- Explicit user request (e.g., "use explore agent")
+- Agent description contains "PROACTIVELY" keyword
 
-function matchTask(userRequest: string, agents: AgentConfig[]): TaskMatch[] {
-  return agents
-    .map((agent) => ({
-      agent,
-      score: calculateMatchScore(userRequest, agent.description),
-      reason: explainMatch(userRequest, agent.description),
-    }))
-    .sort((a, b) => b.score - a.score);
-}
-```
+#### 2. Agent Executor & Context Isolation
 
-**Invocation Decision Tree**
+**Isolated Context**
 
-1. Check for explicit agent name mention → use specified agent
-2. Check for proactive keywords in agent descriptions → auto-invoke
-3. Analyze task type vs agent descriptions → score and select best match
-4. If no good match → execute in main conversation
+- Fresh LLM thread per execution (no access to main conversation history)
+- Separate message history per subagent
+- Tools filtered based on config and subagent status
+- Stateless (no persistence across invocations)
 
-#### 3. Context Isolation Manager
+**Message History**
 
-**Isolated Context Implementation**
+- Includes: system prompt, task prompt, responses, tool calls/results
+- No cross-contamination with main conversation
+- Discarded after execution completes
 
-- Each agent gets fresh LLM conversation thread
-- No access to main conversation history (except passed task prompt)
-- Separate message history per agent execution
-- Clean up on completion
+**Context Cleanup**
 
-**Nesting Prevention**
+- Message history discarded
+- LLM thread terminated
+- Resources cleaned up
 
-```typescript
-class AgentExecutor {
-  private static executionStack: string[] = [];
+**Intermediate Messages**
 
-  execute(agent: AgentConfig, task: string): Promise<string> {
-    if (AgentExecutor.executionStack.length > 0) {
-      throw new Error("Agent nesting not allowed");
-    }
+- Streaming responses supported
+- Tool calls handled transparently
+- Progress updates to user (optional)
 
-    AgentExecutor.executionStack.push(agent.name);
-    try {
-      return this.doExecute(agent, task);
-    } finally {
-      AgentExecutor.executionStack.pop();
-    }
-  }
-}
-```
+**Error Handling**
 
-#### 4. Tool Permission System
+- Agent not found → error to main agent
+- Tool errors → subagent handles/retries
+- LLM API errors → propagate formatted error
+- Validation errors → clear error messages
+
+**Model Selection**
+Priority: param > config > inherit > default
+
+#### 3. Tool Permission System
 
 **Tool Resolver**
 
-```typescript
-function resolveTools(agent: AgentConfig, mainTools: Tool[]): Tool[] {
-  if (!agent.tools || agent.tools.length === 0) {
-    // Inherit all tools from main thread
-    return mainTools;
-  }
+- Config specifies `tools` → use explicit subset
+- Config omits `tools` → inherit all from main (default)
 
-  // Filter to specified tools only
-  return mainTools.filter((tool) => agent.tools.includes(tool.name));
-}
-```
+**Tool Filtering for Subagents (Nesting Prevention)**
 
-**Permission Validation**
+**CRITICAL**: When `isSubagent = true`, automatically remove:
 
-- Validate tool names at configuration load time
-- Reject unknown tool names with clear error
-- Support MCP tool name format: `mcp__server__tool`
+- **Task** - Prevents nesting (subagents can't spawn subagents)
+- **TodoWrite** - Can't modify main conversation todos
+- **TodoRead** - Can't read main conversation todos
 
-#### 5. Resumable Execution
+**Why This Works:**
 
-**Transcript Storage**
+- Simple: Task tool doesn't exist in subagent's tool list
+- No runtime checks: filtered at tool resolution time
+- Stateless: applied fresh each execution
 
-```typescript
-interface AgentTranscript {
-  agentId: string;
-  agentName: string;
-  model: string;
-  tools: string[];
-  createdAt: string;
-  messages: Message[];
-}
+**Why Essential:**
 
-class TranscriptManager {
-  save(agentId: string, transcript: AgentTranscript): void {
-    const path = `agent-${agentId}.jsonl`;
-    fs.writeFileSync(path, JSON.stringify(transcript));
-  }
+- Prevents infinite recursion and exponential costs
+- Predictable flat delegation model
+- Limits attack surface for prompt injection
 
-  load(agentId: string): AgentTranscript | null {
-    const path = `agent-${agentId}.jsonl`;
-    if (!fs.existsSync(path)) return null;
-    return JSON.parse(fs.readFileSync(path, "utf-8"));
-  }
-}
-```
+**Permission Approval**
 
-**Resume Flow**
+- Same approval rules as main conversation
+- User controls which tools require approval
 
-1. User requests resume with `agentId`
-2. Load transcript from `agent-{agentId}.jsonl`
-3. Restore agent configuration and messages
-4. Continue conversation with new task
-5. Append to existing transcript
+**Tool Validation**
 
-#### 6. Management Interface
+- Validated at config load time
+- Unknown tool names rejected with clear errors
 
-**`/agents` Command Structure**
+**MCP Tool Support**
+
+- Format: `mcp__server__tool`
+- Inherited by default
+- Subject to same filtering rules
+
+#### 4. Agent Configuration System
+
+**Configuration Schema**
+
+- **name**: Unique identifier (required)
+- **description**: Invocation trigger (required)
+- **systemPrompt**: Agent's role/behavior (required)
+- **tools**: Array or omit to inherit (optional)
+- **model**: "sonnet" | "opus" | "haiku" | "inherit" (optional)
+
+**Configuration Sources**
+
+1. **File-based** (.md): YAML frontmatter + Markdown body
+   - `~/.neovate/agents/*.md` or `.neovate/agents/*.md`
+2. **JSON-based** (config.json): `agents` field
+   - `~/.neovate/config.json` or `.neovate/config.json`
+
+**Priority & Merge Strategy**
+
+1. Load USER-level: files + config.json (config.json overrides files)
+2. Load PROJECT-level: files + config.json (config.json overrides files)
+3. Final merge: PROJECT overrides USER (for matching names only)
+
+**Agent Registry**
+
+- Central registry: `Map<name, AgentConfig>`
+- Built at startup
+- Task tool queries by name
+- Includes built-in + custom agents
+
+**Validation**
+
+- Required fields: name, description, systemPrompt
+- Tool names validated against available tools
+- Agent names must be unique
+- Invalid configs rejected with errors
+
+#### 5. Management Interface
+
+**`/agents` Command**
 
 ```
 /agents
-  ├── View All Agents
-  ├── Create New Agent
-  │   ├── Choose scope (project/user)
-  │   ├── Generate with AI
-  │   └── Manual creation
-  ├── Edit Agent
-  │   ├── Update configuration
-  │   ├── Edit system prompt
-  │   └── Modify tools
-  └── Delete Agent
+  ├── View All Agents (built-in, user, project)
+  ├── Create (scope: project/user, AI-assisted or manual)
+  ├── Edit (update fields, system prompt, tools, model)
+  └── Delete (custom only, built-in protected)
 ```
+
+**CRUD Operations**
+
+- **Create**: AI-assisted generation or manual edit
+- **Read**: View details and source
+- **Update**: Edit in $EDITOR or inline
+- **Delete**: Remove custom agents only
+
+**External Editor**
+
+- Press 'e' to open in $EDITOR
+- Edit .md or config.json directly
+- Changes reload on next invocation
 
 ### File Structure
 
 ```
 Project Structure:
 .neovate/
-  agents/
+  config.json              # Centralized config with agents field
+  agents/                  # Optional: file-based agents
     code-reviewer.md
     debugger.md
     data-scientist.md
 
 User Structure:
 ~/.neovate/
-  agents/
+  config.json              # Personal config with agents field
+  agents/                  # Optional: personal file-based agents
     personal-assistant.md
     note-taker.md
+```
 
-Plugin Structure:
-~/.neovate/
-  plugins/
-    security-plugin/
-      agents/
-        security-scanner.md
+**Priority Rules:**
+
+1. **Project-level overrides user-level** (for agents with the same name)
+2. **Within each level**, config.json overrides file-based (for agents with the same name)
+3. **Agents with different names** from both levels are merged (no conflict)
+
+**Example Scenario:**
+
+```
+User level has:
+  - ~/.neovate/agents/personal.md        → "personal" agent
+  - ~/.neovate/agents/debugger.md        → "debugger" agent (v1)
+  - ~/.neovate/config.json               → "helper" agent
+
+Project level has:
+  - .neovate/agents/code-reviewer.md     → "code-reviewer" agent
+  - .neovate/agents/debugger.md          → "debugger" agent (v2)
+  - .neovate/config.json                 → "debugger" agent (v3)
+
+Final result:
+  - "personal" agent       (from user file)
+  - "helper" agent         (from user config.json)
+  - "code-reviewer" agent  (from project file)
+  - "debugger" agent       (from project config.json v3) ← wins!
+    - Project overrides user
+    - Within project, config.json overrides file
+```
+
+**Example .neovate/config.json with agents:**
+
+```json
+{
+  "agents": {
+    "code-reviewer": {
+      "description": "Expert code reviewer. Use proactively after code changes.",
+      "prompt": "You are a senior code reviewer specializing in code quality, security, and best practices.\n\nWhen invoked, review code changes and provide constructive feedback...",
+      "tools": ["Read", "Grep", "Glob", "Bash"],
+      "model": "inherit"
+    },
+    "test-runner": {
+      "description": "Runs tests and analyzes failures",
+      "prompt": "You are a test automation expert...",
+      "tools": ["Read", "Bash", "Grep"],
+      "model": "haiku"
+    }
+  },
+  "defaultModel": "sonnet",
+  "otherSettings": "..."
+}
 ```
 
 ### Agent Definition Example
@@ -581,49 +952,11 @@ Plugin Structure:
 name: code-reviewer
 description: Expert code reviewer. Use proactively after code changes to review quality, security, and best practices.
 tools: Read, Grep, Glob, Bash
-model: inherit
 ---
 
 You are a senior code reviewer specializing in code quality, security, and best practices.
 
-## Your Role
-
-When invoked, you will review code changes and provide constructive feedback.
-
-## Review Process
-
-1. Run `git diff` to see recent changes
-2. Focus on modified files and their context
-3. Begin review immediately without asking permission
-
-## Review Checklist
-
-- Code is simple and readable
-- Functions and variables are well-named
-- No duplicated code
-- Proper error handling implemented
-- No exposed secrets or API keys
-- Input validation in place
-- Good test coverage
-- Performance considerations addressed
-
-## Output Format
-
-Provide feedback organized by priority:
-
-### Critical Issues (must fix)
-
-- [Issue with specific line reference and fix suggestion]
-
-### Warnings (should fix)
-
-- [Issue with explanation]
-
-### Suggestions (consider improving)
-
-- [Suggestion with rationale]
-
-Always include specific code examples of how to fix issues.
+...
 ```
 
 ---
@@ -656,25 +989,6 @@ Always include specific code examples of how to fix issues.
 - Treat descriptions as data, not instructions
 - Use structured matching, not prompt concatenation
 - Rate matching algorithm's reasoning
-
-### Transcript Data Leakage
-
-**Risk:** Sensitive data in transcripts persisted to disk
-**Mitigation:**
-
-- Store transcripts in secure location with proper permissions
-- Add option to disable transcript persistence
-- Auto-cleanup old transcripts
-- Warn users about sensitive data
-
-### Agent Impersonation
-
-**Risk:** Malicious agent with same name overrides legitimate one
-**Mitigation:**
-
-- Clear priority system (project > user)
-- Show source in `/agents` interface
-- Require confirmation for non-project agents in shared environments
 
 ---
 
@@ -748,38 +1062,19 @@ Always include specific code examples of how to fix issues.
    - How do we gracefully terminate long-running agents?
    - Should users be able to configure timeouts?
 
-2. **What's the transcript cleanup strategy?**
+2. **Should we treat the main conversation as a first-class agent?**
 
-   - Default TTL for transcripts?
-   - Automatic cleanup vs manual?
-   - Compress vs delete?
-
-3. **How do we handle agent version migrations?**
-
-   - If agent schema changes, how to migrate existing agents?
-   - Backward compatibility guarantees?
-   - Deprecation process?
-
-4. **Should agents be able to call main conversation's context?**
-
-   - Currently fully isolated, but should agents read-only access main history?
-   - Security implications?
-   - Use cases?
-
-5. **How do we prevent agent description spam?**
-   - Can users create agents with overly aggressive "PROACTIVELY" descriptions?
-   - Rate limiting on proactive invocations?
-   - User controls for auto-delegation?
+   - Main conversation could be an agent with its own configuration
+   - Would unify the architecture (all conversations are agents)
+   - Enables features like: main agent model selection, tool restrictions, custom system prompts
+   - Trade-off: Added complexity vs architectural consistency
 
 ### Product Questions
 
 1. **What built-in agents should we ship with?**
 
-   - Plan agent (confirmed)
-   - Code reviewer?
-   - Debugger?
-   - Test runner?
-   - Documentation writer?
+- Explore Agent
+- General Proposal
 
 2. **How do we measure agent effectiveness?**
 
@@ -787,13 +1082,7 @@ Always include specific code examples of how to fix issues.
    - User feedback mechanism?
    - A/B testing different agent prompts?
 
-3. **Should we support agent templates?**
-
-   - Pre-built templates users can customize?
-   - Gallery of community agents?
-   - Import/export format?
-
-4. **How do we handle breaking changes?**
+3. **How do we handle breaking changes?**
    - Version agents?
    - Schema versioning?
    - Migration tools?
@@ -834,30 +1123,6 @@ Always include specific code examples of how to fix issues.
    - Subagents guide: https://code.claude.com/docs/en/subagents
    - Plugin system: https://code.claude.com/docs/en/plugins
    - CLI reference: https://code.claude.com/docs/en/cli-reference
-
-2. **Similar Systems**
-
-   - OpenAI Assistants API
-   - LangChain Agents
-   - AutoGPT multi-agent systems
-
-3. **Design Patterns**
-   - Delegation Pattern
-   - Strategy Pattern
-   - Chain of Responsibility Pattern
-
-### Internal References
-
-1. **Related RFCs**
-
-   - RFC-002: NeovateCode Plugin System (planned)
-   - RFC-003: Tool Permission System (planned)
-   - RFC-004: Context Management (planned)
-
-2. **Codebase References**
-   - Tool system architecture: `src/tools/`
-   - Configuration loader: `src/config/`
-   - LLM interface: `src/llm/`
 
 ---
 
@@ -908,44 +1173,58 @@ Always structure your responses with:
 - Risks & Mitigation
 ```
 
-### Appendix B: CLI Usage Examples
+### Appendix B: Configuration Examples
 
-**Define agent via CLI:**
+**Define agents in .neovate/config.json:**
 
-```bash
-neovate --agents '{
-  "reviewer": {
-    "description": "Code reviewer",
-    "prompt": "Review code for quality",
-    "tools": ["Read", "Grep"],
-    "model": "haiku"
+```json
+{
+  "agents": {
+    "reviewer": {
+      "description": "Code reviewer for quality and security",
+      "prompt": "You are an expert code reviewer. Review code for quality, security, and best practices.",
+      "tools": ["Read", "Grep", "Glob"],
+      "model": "haiku"
+    },
+    "test-analyst": {
+      "description": "Analyzes test failures and suggests fixes",
+      "prompt": "You are a test debugging expert. Analyze test failures and provide actionable fixes.",
+      "tools": ["Read", "Bash", "Grep"],
+      "model": "sonnet"
+    }
   }
-}'
+}
 ```
 
-**Resume agent session:**
+**Define agents in ~/.neovate/config.json (personal):**
 
-```bash
-# After agent completes and returns agentId "abc123"
-neovate --resume-agent abc123
+```json
+{
+  "agents": {
+    "my-helper": {
+      "description": "My personal coding assistant",
+      "prompt": "You are my personal assistant. Help with tasks using my preferred coding style.",
+      "model": "inherit"
+    }
+  }
+}
 ```
 
 ### Appendix C: Comparison Matrix
 
-| Feature            | Claude Code | NeovateCode (Proposed) | Notes                   |
-| ------------------ | ----------- | ---------------------- | ----------------------- |
-| Isolated contexts  | ✅          | ✅                     | Core feature            |
-| Multi-level config | ✅          | ✅                     | Project/CLI/User/Plugin |
-| Tool permissions   | ✅          | ✅                     | Inherit or specify      |
-| Resumable agents   | ✅          | ✅                     | With transcripts        |
-| Agent chaining     | ✅          | ✅                     | Sequential execution    |
-| Nesting prevention | ✅          | ✅                     | Built-in safeguard      |
-| MCP integration    | ✅          | ✅                     | Full support            |
-| `/agents` command  | ✅          | ✅                     | CRUD interface          |
-| Visual builder     | ❌          | ❌                     | Not planned             |
-| Cloud marketplace  | ❌          | ❌                     | Local-first             |
+| Feature            | Claude Code | NeovateCode (Proposed) | Notes                              |
+| ------------------ | ----------- | ---------------------- | ---------------------------------- |
+| Isolated contexts  | ✅          | ✅                     | Core feature                       |
+| Multi-level config | ✅          | ✅                     | Project/User (files + config.json) |
+| CLI config         | ✅          | ⏳ Future              | Not supported in NeovateCode       |
+| Plugin agents      | ✅          | ⏳ Future              | Not supported in NeovateCode       |
+| config.json agents | ❌          | ✅                     | NeovateCode addition               |
+| Tool permissions   | ✅          | ✅                     | Inherit or specify                 |
+| Resumable agents   | ✅          | ⏳ Future              | Planned, not MVP                   |
+| Nesting prevention | ✅          | ✅                     | Core security feature              |
+| MCP integration    | ✅          | ✅                     | Full support                       |
+| `/agents` command  | ✅          | ✅                     | CRUD interface                     |
+| Visual builder     | ❌          | ❌                     | Not planned                        |
+| Cloud marketplace  | ❌          | ❌                     | Local-first                        |
 
 ---
-
-**Document Version:** 1.0
-**Next Review Date:** 2025-12-01
