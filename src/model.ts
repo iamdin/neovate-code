@@ -1000,7 +1000,7 @@ export const providers: ProvidersMap = {
     env: [],
     apiEnv: [],
     api: 'https://api.githubcopilot.com',
-    doc: 'https://docs.github.com/en/copilot',
+    doc: 'https://github.com/settings/copilot/features',
     models: {
       'claude-opus-4': models['claude-4-opus'],
       'grok-code-fast-1': models['grok-code-fast-1'],
