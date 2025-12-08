@@ -83,6 +83,7 @@ class NodeHandlerRegistry {
    */
   private async buildWorkspaceData(
     worktree: {
+      id: string;
       name: string;
       path: string;
       branch: string;
@@ -146,7 +147,7 @@ class NodeHandlerRegistry {
     const settings = context.config;
 
     return {
-      id: worktree.name,
+      id: worktree.id,
       repoPath: gitRoot,
       branch: worktree.branch,
       worktreePath: worktree.path,
@@ -690,7 +691,7 @@ class NodeHandlerRegistry {
 
         // Get workspace names
         const worktrees = await listWorktrees(gitRoot);
-        const workspaceIds = worktrees.map((w) => w.name);
+        const workspaceIds = worktrees.map((w) => w.id);
 
         // Get last accessed timestamp from GlobalData
         const globalDataPath = context.paths.getGlobalDataPath();
@@ -765,6 +766,7 @@ class NodeHandlerRegistry {
         const rootBranch = await getCurrentBranch(gitRoot);
         const rootWorkspaceData = await this.buildWorkspaceData(
           {
+            id: `${gitRoot}:${rootBranch}`,
             name: rootBranch,
             path: gitRoot,
             branch: rootBranch,
@@ -773,7 +775,7 @@ class NodeHandlerRegistry {
           context,
           gitRoot,
         );
-        workspacesData.unshift(rootWorkspaceData);
+        workspacesData.push(rootWorkspaceData);
 
         return {
           success: true,

@@ -6,6 +6,7 @@ import { promisify } from 'util';
 const execAsync = promisify(exec);
 
 export type Worktree = {
+  id: string;
   name: string;
   path: string;
   branch: string;
@@ -307,6 +308,7 @@ export async function createWorktree(
     );
 
     return {
+      id: `${gitRoot}:${name}`,
       name,
       path: worktreePath,
       branch: branchName,
@@ -340,6 +342,7 @@ export async function listWorktrees(cwd: string): Promise<Worktree[]> {
           currentWorktree.path = worktreePath;
           const name = path.basename(worktreePath);
           currentWorktree.name = name;
+          currentWorktree.id = `${gitRoot}:${name}`;
         } else {
           currentWorktree = {};
         }
