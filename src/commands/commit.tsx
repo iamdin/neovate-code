@@ -860,7 +860,11 @@ export async function runCommit(context: Context) {
     checkout: argv.checkout || false,
     noVerify: argv.noVerify || false,
     interactive,
-    model: argv.model || context.config.commit?.model || context.config.model,
+    model:
+      argv.model ||
+      context.config.commit?.model ||
+      context.config.smallModel ||
+      context.config.model,
     language:
       argv.language ||
       context.config.commit?.language ||
