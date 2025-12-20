@@ -789,7 +789,8 @@ export type App =
   | 'terminal'
   | 'antigravity'
   | 'finder'
-  | 'sourcetree';
+  | 'sourcetree'
+  | 'fork';
 
 type UtilsOpenInput = {
   cwd: string;

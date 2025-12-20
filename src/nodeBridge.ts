@@ -2286,6 +2286,7 @@ ${diff}
         terminal: { cmd: 'open', args: ['-a', 'Terminal', cwd] },
         finder: { cmd: 'open', args: [cwd] },
         sourcetree: { cmd: 'open', args: ['-a', 'SourceTree', cwd] },
+        fork: { cmd: 'open', args: ['-a', 'Fork', cwd] },
       };
 
       const config = commands[app];
@@ -2315,6 +2316,7 @@ ${diff}
         'warp',
         'terminal',
         'sourcetree',
+        'fork',
       ] as const;
 
       const cliCommands: Record<string, string> = {
@@ -2331,6 +2333,7 @@ ${diff}
         warp: '/Applications/Warp.app',
         terminal: '/System/Applications/Utilities/Terminal.app',
         sourcetree: '/Applications/Sourcetree.app',
+        fork: '/Applications/Fork.app',
       };
 
       const checkApp = (app: string): boolean => {
