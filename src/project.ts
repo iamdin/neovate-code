@@ -24,7 +24,10 @@ import { randomUUID } from './utils/randomUUID';
 export class Project {
   session: Session;
   context: Context;
-  constructor(opts: { sessionId?: SessionId; context: Context }) {
+  constructor(opts: {
+    sessionId?: SessionId;
+    context: Context;
+  }) {
     this.session = opts.sessionId
       ? Session.resume({
           id: opts.sessionId,
@@ -141,7 +144,7 @@ export class Project {
     });
   }
 
-  private async sendWithSystemPromptAndTools(
+  async sendWithSystemPromptAndTools(
     message: string | null,
     opts: {
       model?: string;
