@@ -1,8 +1,9 @@
 import { Box, Text, useInput } from 'ink';
-import React, { useCallback, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { symbols } from '../utils/symbols';
-import TextInput from './TextInput';
 import { UI_COLORS } from './constants';
+import TextInput from './TextInput';
+import { useTerminalSize } from './useTerminalSize';
 
 export type SelectOption = {
   type: 'text' | 'input';
@@ -35,6 +36,12 @@ export function SelectInput({
   onSubmit,
   submitButtonText = 'Submit',
 }: SelectInputProps) {
+  const { columns: terminalWidth } = useTerminalSize();
+  // Prefix width: "> N. " = 5 chars, or "> N. [ ] " = 9 chars for multi
+  // Max options is 5 (4 + "Other"), so always 1 digit
+  const prefixWidth = mode === 'multi' ? 9 : 5;
+  const inputColumns = terminalWidth - prefixWidth;
+
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [selectedValues, setSelectedValues] = useState<string[]>(
     mode === 'multi' && Array.isArray(defaultValue) ? defaultValue : [],
@@ -176,6 +183,7 @@ export function SelectInput({
                   </Text>
                 )}
                 <TextInput
+                  columns={inputColumns}
                   value={focusedInputValue || option.initialValue || ''}
                   placeholder={option.placeholder}
                   onChange={(value) => {
