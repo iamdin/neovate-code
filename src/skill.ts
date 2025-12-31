@@ -367,9 +367,18 @@ export class SkillManager {
       .replace(/^gitlab:/, '')
       .replace(/^bitbucket:/, '');
 
-    const treeMatch = normalized.match(/^[^/]+\/[^/]+\/tree\/[^/]+\/(.+)$/);
-    if (treeMatch) {
-      normalized = treeMatch[1];
+    const treeMatchWithPath = normalized.match(
+      /^[^/]+\/[^/]+\/tree\/[^/]+\/(.+)$/,
+    );
+    if (treeMatchWithPath) {
+      normalized = treeMatchWithPath[1];
+    } else {
+      const treeMatchBranchOnly = normalized.match(
+        /^([^/]+)\/([^/]+)\/tree\/[^/]+$/,
+      );
+      if (treeMatchBranchOnly) {
+        normalized = treeMatchBranchOnly[2];
+      }
     }
 
     normalized = normalized.replace(/#.*$/, '');
