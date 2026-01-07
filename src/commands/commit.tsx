@@ -1026,6 +1026,8 @@ and may require re-resolving conflicts.`,
                   )
                 }
                 onSubmit={handleEditSubmit}
+                // Account for "> " prefix (2) + outer padding (1)
+                columns={{ useTerminalSize: true, prefix: 3 }}
               />
             </Box>
             <Box marginTop={1}>
@@ -1055,6 +1057,8 @@ and may require re-resolving conflicts.`,
                   )
                 }
                 onSubmit={handleBranchEditSubmit}
+                // Account for "> " prefix (2) + outer padding (1)
+                columns={{ useTerminalSize: true, prefix: 3 }}
               />
             </Box>
             <Box marginTop={1}>

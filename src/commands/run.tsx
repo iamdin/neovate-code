@@ -557,6 +557,8 @@ const RunUI: React.FC<RunUIProps> = ({
               onChange={setPromptInput}
               onSubmit={handlePromptSubmit}
               placeholder="Describe what you want to do..."
+              // Account for "> " prefix (2) + outer padding (1)
+              columns={{ useTerminalSize: true, prefix: 3 }}
             />
           </Box>
           <Box marginTop={1}>
@@ -608,6 +610,8 @@ const RunUI: React.FC<RunUIProps> = ({
                   )
                 }
                 onSubmit={handleEditSubmit}
+                // Account for "> " prefix (2) + outer padding (1)
+                columns={{ useTerminalSize: true, prefix: 3 }}
               />
             </Box>
             <Box marginTop={1}>
@@ -637,6 +641,8 @@ const RunUI: React.FC<RunUIProps> = ({
                   )
                 }
                 onSubmit={handlePromptEditSubmit}
+                // Account for "> " prefix (2) + outer padding (1)
+                columns={{ useTerminalSize: true, prefix: 3 }}
               />
             </Box>
             <Box marginTop={1}>
