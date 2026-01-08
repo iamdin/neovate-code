@@ -16,6 +16,7 @@ export function ActivityIndicator() {
     retryInfo,
   } = useAppStore();
   const [seconds, setSeconds] = useState(0);
+  const [retryRemainingSeconds, setRetryRemainingSeconds] = useState(0);
 
   const text = useMemo(() => {
     if (status === 'processing') return 'Processing...';
@@ -48,6 +49,26 @@ export function ActivityIndicator() {
     }
   }, [status, processingStartTime]);
 
+  useEffect(() => {
+    if (retryInfo?.retryDelayMs && retryInfo?.retryStartTime) {
+      const updateRemaining = () => {
+        const remaining = Math.max(
+          0,
+          Math.ceil(
+            (retryInfo.retryStartTime + retryInfo.retryDelayMs - Date.now()) /
+              1000,
+          ),
+        );
+        setRetryRemainingSeconds(remaining);
+      };
+      updateRemaining();
+      const interval = setInterval(updateRemaining, 1000);
+      return () => clearInterval(interval);
+    } else {
+      setRetryRemainingSeconds(0);
+    }
+  }, [retryInfo?.retryDelayMs, retryInfo?.retryStartTime]);
+
   const statusText = useMemo(() => {
     let text = 'Esc to cancel';
     if (processingTokens > 0) {
@@ -55,12 +76,16 @@ export function ActivityIndicator() {
     }
     if (retryInfo) {
       const errorMsg = retryInfo.error;
-      text += `, Retry ${retryInfo.currentRetry}/${retryInfo.maxRetries}${
-        errorMsg ? `: ${errorMsg}` : ''
-      }`;
+      text += `, Retry ${retryInfo.currentRetry}/${retryInfo.maxRetries}`;
+      if (retryRemainingSeconds > 0) {
+        text += ` (${retryRemainingSeconds}s)`;
+      }
+      if (errorMsg) {
+        text += `: ${errorMsg}`;
+      }
     }
     return `(${text})`;
-  }, [processingTokens, retryInfo]);
+  }, [processingTokens, retryInfo, retryRemainingSeconds]);
 
   if (status === 'idle') return null;
   // Don't hide error message when exiting - only hide if there's no error

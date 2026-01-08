@@ -106,6 +106,8 @@ interface AppState {
     currentRetry: number;
     maxRetries: number;
     error: string | null;
+    retryDelayMs: number;
+    retryStartTime: number;
   } | null;
 
   messages: Message[];
@@ -224,6 +226,8 @@ interface AppActions {
       currentRetry: number;
       maxRetries: number;
       error: string | null;
+      retryDelayMs: number;
+      retryStartTime: number;
     } | null,
   ) => void;
 
@@ -397,6 +401,8 @@ export const useAppStore = create<AppStore>()(
                 currentRetry: result.error.retryAttempt,
                 maxRetries: result.error.maxRetries,
                 error,
+                retryDelayMs: result.error.retryDelayMs,
+                retryStartTime: result.error.retryStartTime,
               },
             });
           } else {

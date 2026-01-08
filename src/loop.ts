@@ -360,6 +360,9 @@ export async function runLoop(opts: RunLoopOpts): Promise<LoopResult> {
 
         break;
       } catch (error: any) {
+        const nextRetryCount = retryCount + 1;
+        const retryDelayMs = 1000 * Math.pow(2, nextRetryCount - 1);
+        const retryStartTime = Date.now();
         opts.onStreamResult?.({
           requestId,
           prompt,
@@ -375,6 +378,8 @@ export async function runLoop(opts: RunLoopOpts): Promise<LoopResult> {
             isRetryable: error.isRetryable,
             retryAttempt: retryCount,
             maxRetries: errorRetryTurns,
+            retryDelayMs,
+            retryStartTime,
           },
         });
 
