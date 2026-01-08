@@ -1440,11 +1440,15 @@ ${diff}
     });
 
     this.messageBus.registerHandler('git.createPR', async (data) => {
-      const { cwd, branchName, body } = data;
+      const { cwd, body } = data;
+      // Note: branchName parameter is intentionally not used
+      // We let gh auto-detect the current branch, which works correctly with forks
       try {
         const { spawn } = await import('child_process');
 
-        const args = ['pr', 'create', '--fill', '--head', branchName];
+        // Don't use --head flag - let gh auto-detect the current branch
+        // This works better with fork setups where head needs to be "username:branch"
+        const args = ['pr', 'create', '--fill'];
         if (body) {
           args.push('--body', body);
         }
@@ -1498,6 +1502,12 @@ ${diff}
               } else if (errorMessage.includes('already exists')) {
                 hint =
                   '\n\nHint: A pull request already exists for this branch.';
+              } else if (
+                errorMessage.includes('No commits between') ||
+                errorMessage.includes("sha can't be blank")
+              ) {
+                hint =
+                  '\n\nHint: Make sure your branch is pushed to remote and has commits ahead of the base branch.';
               }
 
               resolve({
