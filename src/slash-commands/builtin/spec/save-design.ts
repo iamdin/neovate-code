@@ -1,5 +1,5 @@
+import { isEnglish } from '../../../utils/language';
 import type { PromptCommand } from '../../types';
-import { getLanguageInstruction, isEnglish } from '../../../utils/language';
 
 export function saveDesignCommand(language: string): PromptCommand {
   const languageInstruction = isEnglish(language)
@@ -32,7 +32,7 @@ Your task is to:
 10. Use the write tool to create the file with the generated filename and design content.
 11. At the end, print the final file path you wrote to.
 
-If no /spec:brainstorm command is found in the history, clearly tell the user that no brainstorming session could be detected and do not write any file.
+If no /spec:brainstorm command is found in the history, use all messages from the beginning of the conversation instead.
 
 The design document MUST follow this structure:
 
