@@ -75,6 +75,10 @@ const SKIP_DOT_FILES = new Set([
   '.zshrc',
   '.zprofile',
   '.profile',
+  '.DS_Store',
+  '.localized',
+  'Thumbs.db',
+  'desktop.ini',
 ]);
 
 function skip(path: string) {
