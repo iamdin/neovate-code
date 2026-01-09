@@ -13,6 +13,7 @@ export function ActivityIndicator() {
     approvalModal,
     processingStartTime,
     processingTokens,
+    processingToolCalls,
     retryInfo,
   } = useAppStore();
   const [seconds, setSeconds] = useState(0);
@@ -74,6 +75,9 @@ export function ActivityIndicator() {
     if (processingTokens > 0) {
       text += `, ↓ ${processingTokens} tokens`;
     }
+    if (processingToolCalls > 0) {
+      text += `, 🔧 ${processingToolCalls} tools`;
+    }
     if (retryInfo) {
       const errorMsg = retryInfo.error;
       text += `, Retry ${retryInfo.currentRetry}/${retryInfo.maxRetries}`;
@@ -85,7 +89,7 @@ export function ActivityIndicator() {
       }
     }
     return `(${text})`;
-  }, [processingTokens, retryInfo, retryRemainingSeconds]);
+  }, [processingTokens, processingToolCalls, retryInfo, retryRemainingSeconds]);
 
   if (status === 'idle') return null;
   // Don't hide error message when exiting - only hide if there's no error

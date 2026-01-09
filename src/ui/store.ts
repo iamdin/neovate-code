@@ -101,6 +101,7 @@ interface AppState {
   planResult: string | null;
   processingStartTime: number | null;
   processingTokens: number;
+  processingToolCalls: number;
 
   retryInfo: {
     currentRetry: number;
@@ -299,6 +300,7 @@ export const useAppStore = create<AppStore>()(
       planResult: null,
       processingStartTime: null,
       processingTokens: 0,
+      processingToolCalls: 0,
       retryInfo: null,
       approvalModal: null,
       memoryModal: null,
@@ -380,10 +382,17 @@ export const useAppStore = create<AppStore>()(
             // Collect tokens from text-delta and reasoning events
             if (
               chunk.type === 'text-delta' ||
-              chunk.type === 'reasoning-delta'
+              chunk.type === 'reasoning-delta' ||
+              // but i found that tool-input-delta is only emitted once even for large tool input
+              chunk.type === 'tool-input-delta'
             ) {
               const tokenCount = countTokens(chunk.delta);
               set({ processingTokens: get().processingTokens + tokenCount });
+            }
+            if (chunk.type === 'tool-input-start') {
+              set({
+                processingToolCalls: get().processingToolCalls + 1,
+              });
             }
           }
         });
@@ -778,6 +787,7 @@ export const useAppStore = create<AppStore>()(
           status: 'processing',
           processingStartTime: Date.now(),
           processingTokens: 0,
+          processingToolCalls: 0,
         });
         const { message } = opts;
         const { bridge, cwd, sessionId, pastedImageMap } = get();
@@ -817,6 +827,7 @@ export const useAppStore = create<AppStore>()(
             status: 'idle',
             processingStartTime: null,
             processingTokens: 0,
+            processingToolCalls: 0,
             retryInfo: null,
             forkParentUuid: null,
           });
@@ -835,6 +846,7 @@ export const useAppStore = create<AppStore>()(
               error: response.error.message,
               processingStartTime: null,
               processingTokens: 0,
+              processingToolCalls: 0,
               retryInfo: null,
               forkParentUuid: null,
             });
@@ -856,6 +868,7 @@ export const useAppStore = create<AppStore>()(
           status: 'idle',
           processingStartTime: null,
           processingTokens: 0,
+          processingToolCalls: 0,
           retryInfo: null,
           bashBackgroundPrompt: null,
         });
@@ -880,6 +893,7 @@ export const useAppStore = create<AppStore>()(
           pastedTextMap: {},
           pastedImageMap: {},
           processingTokens: 0,
+          processingToolCalls: 0,
           retryInfo: null,
           forkParentUuid: null,
           forkModalVisible: false,
@@ -973,6 +987,7 @@ export const useAppStore = create<AppStore>()(
           planResult: null,
           processingStartTime: null,
           processingTokens: 0,
+          processingToolCalls: 0,
           retryInfo: null,
           planMode: false,
           bashMode: false,
